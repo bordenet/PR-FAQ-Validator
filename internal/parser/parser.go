@@ -34,18 +34,19 @@ type MetricInfo struct {
 }
 
 type PRQualityBreakdown struct {
-	// Structure & Hook (25 points)
+	// Structure & Hook (30 points) - increased to accommodate release date
 	HeadlineScore    int    // 0-10: Clear, compelling headline
 	HookScore        int    // 0-15: Newsworthy hook with specificity
+	ReleaseDateScore int    // 0-5: Release date in top lines
 	
 	// Content Quality (35 points)
 	FiveWsScore      int    // 0-15: Who, what, when, where, why coverage
 	CredibilityScore int    // 0-10: Supporting details, data, context
 	StructureScore   int    // 0-10: Inverted pyramid structure
 	
-	// Professional Quality (25 points)
+	// Professional Quality (20 points) - reduced to maintain 100 total
 	ToneScore        int    // 0-10: Professional but readable
-	FluffScore       int    // 0-15: Absence of marketing fluff/hype
+	FluffScore       int    // 0-10: Absence of marketing fluff/hype (reduced from 15)
 	
 	// Customer Evidence (15 points) - existing quote scoring
 	QuoteScore       int    // 0-15: Quality customer quotes with metrics
@@ -85,16 +86,18 @@ func GenerateMarkdownReport(sections *SpecSections, prScore *PRScore) string {
 	report.WriteString("| Category | Score | Max | Status | Priority |\n")
 	report.WriteString("|----------|-------|-----|--------|----------|\n")
 	
-	// Structure & Hook
-	structureTotal := breakdown.HeadlineScore + breakdown.HookScore
-	structureStatus := getScoreStatus(structureTotal, 25)
-	structurePriority := getPriority(structureTotal, 25)
-	report.WriteString(fmt.Sprintf("| **Structure & Hook** | %d | 25 | %s | %s |\n", 
+	// Structure & Hook (now 30 points)
+	structureTotal := breakdown.HeadlineScore + breakdown.HookScore + breakdown.ReleaseDateScore
+	structureStatus := getScoreStatus(structureTotal, 30)
+	structurePriority := getPriority(structureTotal, 30)
+	report.WriteString(fmt.Sprintf("| **Structure & Hook** | %d | 30 | %s | %s |\n", 
 		structureTotal, structureStatus, structurePriority))
 	report.WriteString(fmt.Sprintf("| ├─ Headline Quality | %d | 10 | %s | %s |\n", 
 		breakdown.HeadlineScore, getScoreStatus(breakdown.HeadlineScore, 10), getPriority(breakdown.HeadlineScore, 10)))
-	report.WriteString(fmt.Sprintf("| └─ Newsworthy Hook | %d | 15 | %s | %s |\n", 
+	report.WriteString(fmt.Sprintf("| ├─ Newsworthy Hook | %d | 15 | %s | %s |\n", 
 		breakdown.HookScore, getScoreStatus(breakdown.HookScore, 15), getPriority(breakdown.HookScore, 15)))
+	report.WriteString(fmt.Sprintf("| └─ Release Date | %d | 5 | %s | %s |\n", 
+		breakdown.ReleaseDateScore, getScoreStatus(breakdown.ReleaseDateScore, 5), getPriority(breakdown.ReleaseDateScore, 5)))
 	
 	// Content Quality
 	contentTotal := breakdown.FiveWsScore + breakdown.CredibilityScore + breakdown.StructureScore
@@ -109,16 +112,16 @@ func GenerateMarkdownReport(sections *SpecSections, prScore *PRScore) string {
 	report.WriteString(fmt.Sprintf("| └─ Structure | %d | 10 | %s | %s |\n", 
 		breakdown.StructureScore, getScoreStatus(breakdown.StructureScore, 10), getPriority(breakdown.StructureScore, 10)))
 	
-	// Professional Quality
+	// Professional Quality (now 20 points)
 	professionalTotal := breakdown.ToneScore + breakdown.FluffScore
-	professionalStatus := getScoreStatus(professionalTotal, 25)
-	professionalPriority := getPriority(professionalTotal, 25)
-	report.WriteString(fmt.Sprintf("| **Professional Quality** | %d | 25 | %s | %s |\n", 
+	professionalStatus := getScoreStatus(professionalTotal, 20)
+	professionalPriority := getPriority(professionalTotal, 20)
+	report.WriteString(fmt.Sprintf("| **Professional Quality** | %d | 20 | %s | %s |\n", 
 		professionalTotal, professionalStatus, professionalPriority))
 	report.WriteString(fmt.Sprintf("| ├─ Tone & Readability | %d | 10 | %s | %s |\n", 
 		breakdown.ToneScore, getScoreStatus(breakdown.ToneScore, 10), getPriority(breakdown.ToneScore, 10)))
-	report.WriteString(fmt.Sprintf("| └─ Fluff Avoidance | %d | 15 | %s | %s |\n", 
-		breakdown.FluffScore, getScoreStatus(breakdown.FluffScore, 15), getPriority(breakdown.FluffScore, 15)))
+	report.WriteString(fmt.Sprintf("| └─ Fluff Avoidance | %d | 10 | %s | %s |\n", 
+		breakdown.FluffScore, getScoreStatus(breakdown.FluffScore, 10), getPriority(breakdown.FluffScore, 10)))
 	
 	// Customer Evidence
 	report.WriteString(fmt.Sprintf("| **Customer Evidence** | %d | 15 | %s | %s |\n", 
@@ -1060,7 +1063,7 @@ func analyzeToneAndReadability(content string) (int, []string, []string) {
 func analyzeMarketingFluff(content string) (int, []string, []string) {
 	var issues []string
 	var strengths []string
-	score := 15 // Start with full points, deduct for fluff
+	score := 10 // Start with full points, deduct for fluff
 	
 	contentLower := strings.ToLower(content)
 	
@@ -1080,10 +1083,10 @@ func analyzeMarketingFluff(content string) (int, []string, []string) {
 	}
 	
 	if hypeCount > 3 {
-		score -= 5
+		score -= 3
 		issues = append(issues, "Excessive hyperbolic language reduces credibility")
 	} else if hypeCount > 1 {
-		score -= 2
+		score -= 1
 		issues = append(issues, "Consider reducing promotional adjectives")
 	} else if hypeCount == 0 {
 		strengths = append(strengths, "Avoids hyperbolic marketing language")
@@ -1107,10 +1110,10 @@ func analyzeMarketingFluff(content string) (int, []string, []string) {
 	if len(quotes) > 0 {
 		fluffRatio := float64(fluffyQuotes) / float64(len(quotes))
 		if fluffRatio > 0.7 {
-			score -= 4
+			score -= 3
 			issues = append(issues, "Most quotes are generic emotional responses")
 		} else if fluffRatio > 0.3 {
-			score -= 2
+			score -= 1
 			issues = append(issues, "Some quotes lack substantive content")
 		} else {
 			strengths = append(strengths, "Quotes provide meaningful insights")
@@ -1128,7 +1131,7 @@ func analyzeMarketingFluff(content string) (int, []string, []string) {
 	}
 	
 	if vagueCount > 2 {
-		score -= 3
+		score -= 2
 		issues = append(issues, "Vague benefit claims need specific proof points")
 	} else if vagueCount == 0 {
 		strengths = append(strengths, "Avoids vague, unsubstantiated claims")
@@ -1258,6 +1261,62 @@ func analyzeStructure(content string) (int, []string, []string) {
 	return score, issues, strengths
 }
 
+// analyzeReleaseDate checks for proper date formatting in the opening lines
+func analyzeReleaseDate(content string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 0
+	
+	// Get the first few lines (first 200 characters) to look for release date
+	firstLines := content
+	if len(content) > 200 {
+		firstLines = content[:200]
+	}
+	
+	// Common date patterns for press releases
+	datePatterns := []string{
+		// Month Day, Year format: "Aug 20, 2024", "August 20, 2024", "Jan 1, 2025"
+		`(?i)\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b`,
+		// Month Day Year format: "August 20 2024"
+		`(?i)\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\s+\d{4}\b`,
+		// Day Month Year format: "20 August 2024"
+		`(?i)\b\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b`,
+		// MM/DD/YYYY format: "08/20/2024"
+		`\b\d{1,2}/\d{1,2}/\d{4}\b`,
+		// MM-DD-YYYY format: "08-20-2024"
+		`\b\d{1,2}-\d{1,2}-\d{4}\b`,
+		// YYYY-MM-DD format: "2024-08-20"
+		`\b\d{4}-\d{1,2}-\d{1,2}\b`,
+		// Full date with day: "Monday, August 20, 2024"
+		`(?i)\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}\b`,
+	}
+	
+	hasDate := false
+	for _, pattern := range datePatterns {
+		if matched, _ := regexp.MatchString(pattern, firstLines); matched {
+			hasDate = true
+			break
+		}
+	}
+	
+	if hasDate {
+		score = 5
+		strengths = append(strengths, "Includes release date in opening lines")
+		
+		// Check if it follows the standard press release format (Date. Location. Company...)
+		locationPattern := `(?i)\b[A-Z][a-z]+,?\s+[A-Z]{2,}\b` // City, State/Country pattern
+		if matched, _ := regexp.MatchString(locationPattern, firstLines); matched {
+			strengths = append(strengths, "Follows standard press release dateline format")
+		}
+	} else {
+		score = 0
+		issues = append(issues, "Missing release date in opening lines")
+		issues = append(issues, "Add date and location (e.g., 'Aug 20, 2024. Seattle, WA.')")
+	}
+	
+	return score, issues, strengths
+}
+
 // comprehensivePRAnalysis combines all quality metrics
 func comprehensivePRAnalysis(prContent string, title string, quoteScore int) *PRScore {
 	if prContent == "" {
@@ -1267,6 +1326,7 @@ func comprehensivePRAnalysis(prContent string, title string, quoteScore int) *PR
 	// Analyze each component
 	headlineScore, headlineIssues, headlineStrengths := analyzeHeadlineQuality(title)
 	hookScore, hookIssues, hookStrengths := analyzeNewswortyHook(prContent)
+	releaseDateScore, releaseDateIssues, releaseDateStrengths := analyzeReleaseDate(prContent)
 	fiveWsScore, fiveWsIssues, fiveWsStrengths := analyzeFiveWs(prContent)
 	structureScore, structIssues, structStrengths := analyzeStructure(prContent)
 	toneScore, toneIssues, toneStrengths := analyzeToneAndReadability(prContent)
@@ -1274,23 +1334,27 @@ func comprehensivePRAnalysis(prContent string, title string, quoteScore int) *PR
 	
 	// Combine all issues and strengths
 	allIssues := append(headlineIssues, hookIssues...)
+	allIssues = append(allIssues, releaseDateIssues...)
 	allIssues = append(allIssues, fiveWsIssues...)
 	allIssues = append(allIssues, structIssues...)
 	allIssues = append(allIssues, toneIssues...)
 	allIssues = append(allIssues, fluffIssues...)
 	
 	allStrengths := append(headlineStrengths, hookStrengths...)
+	allStrengths = append(allStrengths, releaseDateStrengths...)
 	allStrengths = append(allStrengths, fiveWsStrengths...)
 	allStrengths = append(allStrengths, structStrengths...)
 	allStrengths = append(allStrengths, toneStrengths...)
 	allStrengths = append(allStrengths, fluffStrengths...)
 	
 	// Calculate overall score (100 points total)
-	totalScore := headlineScore + hookScore + fiveWsScore + structureScore + toneScore + fluffScore + quoteScore
+	// New scoring: Structure & Hook (30), Content Quality (35), Professional Quality (20), Customer Evidence (15)
+	totalScore := headlineScore + hookScore + releaseDateScore + fiveWsScore + structureScore + toneScore + fluffScore + quoteScore
 	
 	breakdown := PRQualityBreakdown{
 		HeadlineScore:    headlineScore,
 		HookScore:        hookScore,
+		ReleaseDateScore: releaseDateScore,
 		FiveWsScore:      fiveWsScore,
 		CredibilityScore: toneScore, // Use tone score for credibility
 		StructureScore:   structureScore,
@@ -1335,19 +1399,49 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 	var titleSet bool
 	var allSections []sectionInfo
 
+	// Define common section headers once
+	commonHeaders := []string{
+		"Press Release", "FAQ", "FAQs", "Frequently Asked Questions", 
+		"Q&A", "Questions and Answers", "Success Metrics", "Key Metrics",
+		"Metrics", "Internal FAQ", "Questions", "Answers",
+	}
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 
 		// Extract the title (first H1)
 		if !titleSet && strings.HasPrefix(line, "# ") {
-			sections.Title = strings.TrimPrefix(line, "# ")
+			titleText := strings.TrimPrefix(line, "# ")
+			sections.Title = titleText
 			titleSet = true
+			
+			// Check if this H1 is also a section header (like "# Press Release")
+			for _, header := range commonHeaders {
+				if strings.EqualFold(titleText, header) {
+					// This H1 is both a title and a section header
+					currentSection = titleText
+					continue
+				}
+			}
 			continue
 		}
 
-		// Detect section heading
-		if strings.HasPrefix(line, "## ") {
+		// Detect section heading (both markdown ## and plain text)
+		isMarkdownHeader := strings.HasPrefix(line, "## ")
+		isPlainTextHeader := false
+		
+		// Check for plain text headers (common section names that stand alone)
+		trimmedLine := strings.TrimSpace(line)
+		
+		for _, header := range commonHeaders {
+			if strings.EqualFold(trimmedLine, header) {
+				isPlainTextHeader = true
+				break
+			}
+		}
+		
+		if isMarkdownHeader || isPlainTextHeader {
 			// Save the previous section's content
 			if currentSection != "" {
 				content := strings.TrimSpace(sectionBuffer.String())
@@ -1358,7 +1452,11 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 				sectionBuffer.Reset()
 			}
 
-			currentSection = strings.TrimSpace(strings.TrimPrefix(line, "## "))
+			if isMarkdownHeader {
+				currentSection = strings.TrimSpace(strings.TrimPrefix(line, "## "))
+			} else {
+				currentSection = trimmedLine
+			}
 			continue
 		}
 
