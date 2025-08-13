@@ -3,16 +3,16 @@
 
 # pr-faq-validator
 
-AI-powered tool to analyze and score [PR-FAQ documents](https://github.com/bordenet/Engineering_Culture/blob/main/SDLC/The_PR-FAQ.md) with comprehensive quality metrics and intelligent section detection.
+AI-powered tool to analyze and score [PR-FAQ documents](https://github.com/bordenet/Engineering_Culture/blob/main/SDLC/The_PR-FAQ.md) with comprehensive quality metrics and automated section detection.
 
 ## Overview
 
-pr-faq-validator analyzes PR-FAQ (Press Release - Frequently Asked Questions) documents and provides comprehensive quality scoring with detailed feedback. The tool uses intelligent fuzzy logic to automatically detect press release and FAQ sections, even when not explicitly labeled, and evaluates content against journalistic best practices.
+pr-faq-validator analyzes PR-FAQ (Press Release - Frequently Asked Questions) documents and provides comprehensive quality scoring with detailed feedback. The tool automatically detects press release and FAQ sections and evaluates content against journalistic best practices.
 
 ## Features
 
 ### Core Analysis
-- **Intelligent Section Detection**: Uses fuzzy logic to identify press releases and FAQs without explicit headers
+- **Automatic Section Detection**: Identifies press releases and FAQs regardless of headers
 - **Comprehensive Quality Scoring**: 100-point scoring system across multiple dimensions
 - **Journalistic Standards**: Evaluates against press release best practices for media pickup
 
@@ -23,12 +23,11 @@ pr-faq-validator analyzes PR-FAQ (Press Release - Frequently Asked Questions) do
 - **Customer Evidence (15 pts)**: Quote quality with quantitative metrics
 
 ### Advanced Features
-- **Fuzzy Content Recognition**: Detects press releases by date patterns, announcement language, and business wire format
 - **Quote Metric Analysis**: Identifies and scores quantitative metrics in customer testimonials
 - **Marketing Fluff Detection**: Flags hyperbolic language and unsubstantiated claims
 - **5 Ws Validation**: Ensures WHO, WHAT, WHEN, WHERE, WHY are clearly addressed
 - **AI-Powered Feedback**: GPT-4 provides expert analysis and improvement suggestions
-- **Flexible Section Support**: Handles various naming conventions and document structures
+- **Flexible Document Support**: Handles various naming conventions and document structures
 
 ## Installation
 
@@ -70,9 +69,8 @@ export OPENAI_API_KEY=your_openai_api_key_here
 
 ## Input Format
 
-The tool supports both explicitly labeled and implicitly structured PR-FAQ documents:
+The tool works with various PR-FAQ document structures:
 
-### Explicit Headers (Traditional)
 ```markdown
 # Your PR-FAQ Title
 
@@ -87,39 +85,7 @@ A: Your answer here...
 Your success metrics here...
 ```
 
-### Implicit Recognition (Fuzzy Logic)
-The tool can automatically detect sections without explicit headers:
-
-```markdown
-# Product Launch Announcement
-
-**Press Release Content** (detected by patterns):
-- Date/location format: "SEATTLE, WA — December 1, 2016"
-- Announcement language: "Today announces", "unveils", "launches"
-- Business Wire format and structure
-- Customer quotes with attribution
-
-**FAQ Content** (detected by structure):
-- Question/answer format
-- Headers containing "FAQ", "Questions", "Q&A"
-- Sequential numbered questions
-```
-
-### Supported Section Recognition
-
-**Press Release Detection**:
-- Explicit headers: `## Press Release`
-- Content patterns: Date formats, business wire structure, announcement language
-- Context clues: Company names, product launches, executive quotes
-
-**FAQ Detection**:
-- Explicit headers: `## FAQ`, `## FAQs`, `## Frequently Asked Questions`, `## Q&A`
-- Content structure: Question/answer pairs, numbered sections
-- Flexible naming: "Internal FAQ", "Common Questions", "Questions and Answers"
-
-**Metrics Detection**:
-- Headers: `## Success Metrics`, `## Key Metrics`
-- Content analysis for KPI and measurement discussions
+The tool automatically recognizes sections regardless of how they're labeled - whether using traditional headers like "Press Release" and "FAQ", or other variations like "Announcement", "Q&A", "Questions and Answers", etc.
 
 ## Output
 
@@ -163,9 +129,9 @@ Customer Evidence:     3/15 points
 │   ├── llm/
 │   │   └── llm.go            # OpenAI API integration with retry logic
 │   └── parser/
-│       └── parser.go         # Fuzzy logic parsing, quality analysis, and scoring
+│       └── parser.go         # Document parsing, quality analysis, and scoring
 ├── testdata/
-│   └── example_prfaq.md      # Sample PR-FAQ document with mixed explicit/implicit sections
+│   └── example_prfaq.md      # Sample PR-FAQ document for testing
 └── go.mod                    # Go module dependencies
 ```
 

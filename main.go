@@ -6,10 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"regexp"
+	"strings"
 )
 
 func main() {
 	inputFile := flag.String("file", "", "Path to the PR-FAQ markdown file")
+	reportFile := flag.String("report", "", "Optional: Output markdown report file (default: stdout)")
 	flag.Parse()
 
 	if *inputFile == "" {
@@ -21,6 +25,23 @@ func main() {
 		log.Fatalf("Failed to parse PR-FAQ: %v", err)
 	}
 
+	// Generate comprehensive markdown report
+	report := parser.GenerateMarkdownReport(sections, sections.PRScore)
+	
+	// Output report
+	if *reportFile != "" {
+		err := writeReportToFile(*reportFile, report)
+		if err != nil {
+			log.Fatalf("Failed to write report: %v", err)
+		}
+		fmt.Printf("Report generated: %s\n", *reportFile)
+		fmt.Printf("Overall Score: %d/100\n", sections.PRScore.OverallScore)
+	} else {
+		fmt.Print(report)
+	}
+
+	// Original detailed analysis follows for reference
+	fmt.Printf("\n---\n\n== Detailed Analysis ==\n\n")
 	fmt.Printf("== PR-FAQ Title ==\n%s\n\n", sections.Title)
 
 	// Display comprehensive PR scoring results
@@ -93,4 +114,29 @@ func main() {
 		}
 		fmt.Printf("== Feedback for FAQs ==\n%s\n\n", feedback.Comments)
 	}
+}
+
+func writeReportToFile(filename, content string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	
+	_, err = file.WriteString(content)
+	return err
+}
+
+func countNumberedQuestions(faqContent string) int {
+	count := 0
+	lines := strings.Split(faqContent, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "## ") {
+			header := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "## "))
+			if matched, _ := regexp.MatchString(`^\d+\.`, header); matched {
+				count++
+			}
+		}
+	}
+	return count
 }

@@ -2,9 +2,11 @@ package parser
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type SpecSections struct {
@@ -51,6 +53,309 @@ type PRQualityBreakdown struct {
 	// Detailed feedback
 	Issues           []string
 	Strengths        []string
+}
+
+// GenerateMarkdownReport creates a comprehensive markdown report with scoring table
+func GenerateMarkdownReport(sections *SpecSections, prScore *PRScore) string {
+	var report strings.Builder
+	
+	// Header
+	report.WriteString("# PR-FAQ Analysis Report\n\n")
+	if sections.Title != "" {
+		report.WriteString("**Document:** " + sections.Title + "\n")
+	}
+	report.WriteString("**Analysis Date:** " + time.Now().Format("January 2, 2006") + "\n")
+	report.WriteString("**Overall Score:** " + fmt.Sprintf("%d/100", prScore.OverallScore) + "\n\n")
+	
+	// Executive Summary
+	report.WriteString("## Executive Summary\n\n")
+	if prScore.OverallScore >= 80 {
+		report.WriteString("🟢 **Excellent** - This press release meets high journalistic standards and is ready for media distribution.\n\n")
+	} else if prScore.OverallScore >= 60 {
+		report.WriteString("🟡 **Good** - This press release has solid foundations but could benefit from targeted improvements.\n\n")
+	} else if prScore.OverallScore >= 40 {
+		report.WriteString("🟠 **Needs Improvement** - This press release requires significant enhancements before media distribution.\n\n")
+	} else {
+		report.WriteString("🔴 **Major Issues** - This press release needs substantial revision to meet professional standards.\n\n")
+	}
+	
+	// Results Table
+	breakdown := prScore.QualityBreakdown
+	report.WriteString("## Scoring Results\n\n")
+	report.WriteString("| Category | Score | Max | Status | Priority |\n")
+	report.WriteString("|----------|-------|-----|--------|----------|\n")
+	
+	// Structure & Hook
+	structureTotal := breakdown.HeadlineScore + breakdown.HookScore
+	structureStatus := getScoreStatus(structureTotal, 25)
+	structurePriority := getPriority(structureTotal, 25)
+	report.WriteString(fmt.Sprintf("| **Structure & Hook** | %d | 25 | %s | %s |\n", 
+		structureTotal, structureStatus, structurePriority))
+	report.WriteString(fmt.Sprintf("| ├─ Headline Quality | %d | 10 | %s | %s |\n", 
+		breakdown.HeadlineScore, getScoreStatus(breakdown.HeadlineScore, 10), getPriority(breakdown.HeadlineScore, 10)))
+	report.WriteString(fmt.Sprintf("| └─ Newsworthy Hook | %d | 15 | %s | %s |\n", 
+		breakdown.HookScore, getScoreStatus(breakdown.HookScore, 15), getPriority(breakdown.HookScore, 15)))
+	
+	// Content Quality
+	contentTotal := breakdown.FiveWsScore + breakdown.CredibilityScore + breakdown.StructureScore
+	contentStatus := getScoreStatus(contentTotal, 35)
+	contentPriority := getPriority(contentTotal, 35)
+	report.WriteString(fmt.Sprintf("| **Content Quality** | %d | 35 | %s | %s |\n", 
+		contentTotal, contentStatus, contentPriority))
+	report.WriteString(fmt.Sprintf("| ├─ 5 Ws Coverage | %d | 15 | %s | %s |\n", 
+		breakdown.FiveWsScore, getScoreStatus(breakdown.FiveWsScore, 15), getPriority(breakdown.FiveWsScore, 15)))
+	report.WriteString(fmt.Sprintf("| ├─ Credibility | %d | 10 | %s | %s |\n", 
+		breakdown.CredibilityScore, getScoreStatus(breakdown.CredibilityScore, 10), getPriority(breakdown.CredibilityScore, 10)))
+	report.WriteString(fmt.Sprintf("| └─ Structure | %d | 10 | %s | %s |\n", 
+		breakdown.StructureScore, getScoreStatus(breakdown.StructureScore, 10), getPriority(breakdown.StructureScore, 10)))
+	
+	// Professional Quality
+	professionalTotal := breakdown.ToneScore + breakdown.FluffScore
+	professionalStatus := getScoreStatus(professionalTotal, 25)
+	professionalPriority := getPriority(professionalTotal, 25)
+	report.WriteString(fmt.Sprintf("| **Professional Quality** | %d | 25 | %s | %s |\n", 
+		professionalTotal, professionalStatus, professionalPriority))
+	report.WriteString(fmt.Sprintf("| ├─ Tone & Readability | %d | 10 | %s | %s |\n", 
+		breakdown.ToneScore, getScoreStatus(breakdown.ToneScore, 10), getPriority(breakdown.ToneScore, 10)))
+	report.WriteString(fmt.Sprintf("| └─ Fluff Avoidance | %d | 15 | %s | %s |\n", 
+		breakdown.FluffScore, getScoreStatus(breakdown.FluffScore, 15), getPriority(breakdown.FluffScore, 15)))
+	
+	// Customer Evidence
+	report.WriteString(fmt.Sprintf("| **Customer Evidence** | %d | 15 | %s | %s |\n", 
+		breakdown.QuoteScore, getScoreStatus(breakdown.QuoteScore, 15), getPriority(breakdown.QuoteScore, 15)))
+	report.WriteString(fmt.Sprintf("| └─ Quote Quality | %d | 15 | %s | %s |\n", 
+		breakdown.QuoteScore, getScoreStatus(breakdown.QuoteScore, 15), getPriority(breakdown.QuoteScore, 15)))
+	
+	// Total
+	report.WriteString(fmt.Sprintf("| **TOTAL SCORE** | **%d** | **100** | %s | - |\n\n", 
+		prScore.OverallScore, getOverallStatus(prScore.OverallScore)))
+	
+	// Strengths
+	if len(breakdown.Strengths) > 0 {
+		report.WriteString("## ✅ Strengths\n\n")
+		for _, strength := range breakdown.Strengths {
+			report.WriteString("- " + strength + "\n")
+		}
+		report.WriteString("\n")
+	}
+	
+	// Priority Improvements
+	report.WriteString("## 🎯 Priority Improvements\n\n")
+	improvements := getPriorityImprovements(breakdown)
+	if len(improvements) == 0 {
+		report.WriteString("No critical issues identified. Consider the suggestions below for further optimization.\n\n")
+	} else {
+		for i, improvement := range improvements {
+			report.WriteString(fmt.Sprintf("### %d. %s\n\n", i+1, improvement.Title))
+			report.WriteString("**Impact:** " + improvement.Impact + "\n\n")
+			report.WriteString("**Action Steps:**\n")
+			for _, step := range improvement.Steps {
+				report.WriteString("- " + step + "\n")
+			}
+			report.WriteString("\n")
+		}
+	}
+	
+	// All Issues
+	if len(breakdown.Issues) > 0 {
+		report.WriteString("## ⚠️ Detailed Issues to Address\n\n")
+		categoryIssues := categorizeIssues(breakdown.Issues)
+		
+		for category, issues := range categoryIssues {
+			report.WriteString("### " + category + "\n\n")
+			for _, issue := range issues {
+				report.WriteString("- " + issue + "\n")
+			}
+			report.WriteString("\n")
+		}
+	}
+	
+	// Quote Analysis
+	if len(prScore.MetricDetails) > 0 {
+		report.WriteString("## 📊 Customer Quote Analysis\n\n")
+		report.WriteString(fmt.Sprintf("**Total Quotes:** %d | **Quotes with Metrics:** %d\n\n", 
+			prScore.TotalQuotes, prScore.QuotesWithMetrics))
+		
+		for i, detail := range prScore.MetricDetails {
+			score := detail.Score
+			scoreEmoji := "🔴"
+			if score >= 7 {
+				scoreEmoji = "🟢"
+			} else if score >= 4 {
+				scoreEmoji = "🟡"
+			}
+			
+			report.WriteString(fmt.Sprintf("### Quote %d %s (%d/10 points)\n\n", i+1, scoreEmoji, score))
+			report.WriteString("> \"" + detail.Quote + "\"\n\n")
+			
+			if len(detail.Metrics) > 0 {
+				report.WriteString("**Metrics Detected:**\n")
+				for j, metric := range detail.Metrics {
+					report.WriteString("- " + metric + " (" + detail.MetricTypes[j] + ")\n")
+				}
+			} else {
+				report.WriteString("**⚠️ No quantitative metrics detected**\n\n")
+				report.WriteString("**Suggestions:**\n")
+				report.WriteString("- Add specific percentages (e.g., \"reduced costs by 30%\")\n")
+				report.WriteString("- Include time savings (e.g., \"saves 2 hours per day\")\n")
+				report.WriteString("- Mention scale improvements (e.g., \"processes 10x more data\")\n")
+				report.WriteString("- Add customer count or revenue impact\n")
+			}
+			report.WriteString("\n")
+		}
+	}
+	
+	// Footer
+	report.WriteString("---\n\n")
+	report.WriteString("*Report generated by pr-faq-validator*\n")
+	report.WriteString("*For questions about scoring methodology, see the documentation*\n")
+	
+	return report.String()
+}
+
+func getScoreStatus(score, max int) string {
+	percentage := float64(score) / float64(max)
+	if percentage >= 0.8 {
+		return "🟢 Excellent"
+	} else if percentage >= 0.6 {
+		return "🟡 Good"
+	} else if percentage >= 0.4 {
+		return "🟠 Needs Work"
+	} else {
+		return "🔴 Critical"
+	}
+}
+
+func getPriority(score, max int) string {
+	percentage := float64(score) / float64(max)
+	if percentage >= 0.8 {
+		return "Low"
+	} else if percentage >= 0.6 {
+		return "Medium"
+	} else if percentage >= 0.4 {
+		return "High"
+	} else {
+		return "Critical"
+	}
+}
+
+func getOverallStatus(score int) string {
+	if score >= 80 {
+		return "🟢 Ready"
+	} else if score >= 60 {
+		return "🟡 Good"
+	} else if score >= 40 {
+		return "🟠 Needs Work"
+	} else {
+		return "🔴 Major Issues"
+	}
+}
+
+type Improvement struct {
+	Title  string
+	Impact string
+	Steps  []string
+}
+
+func getPriorityImprovements(breakdown PRQualityBreakdown) []Improvement {
+	var improvements []Improvement
+	
+	// Critical issues (score < 40% of max)
+	if breakdown.HeadlineScore < 4 {
+		improvements = append(improvements, Improvement{
+			Title:  "Create Compelling Headline",
+			Impact: "Headlines are the first thing journalists see. Poor headlines lead to immediate rejection.",
+			Steps: []string{
+				"Write 6-12 word headline with strong action verbs",
+				"Include specific metrics or outcomes in the headline",
+				"Avoid generic terms like 'innovative' or 'cutting-edge'",
+				"Test: Can someone understand the news in 5 seconds?",
+			},
+		})
+	}
+	
+	if breakdown.HookScore < 6 {
+		improvements = append(improvements, Improvement{
+			Title:  "Strengthen Opening Hook",
+			Impact: "Journalists need immediate relevance. Weak hooks get press releases ignored.",
+			Steps: []string{
+				"Start with specific, timely announcement",
+				"Include quantifiable outcomes (percentages, metrics)",
+				"Clearly identify problem being solved",
+				"Avoid emotional language ('excited', 'pleased')",
+			},
+		})
+	}
+	
+	if breakdown.QuoteScore < 6 {
+		improvements = append(improvements, Improvement{
+			Title:  "Add Quantitative Customer Evidence",
+			Impact: "Metrics in quotes provide credible proof points that journalists can use in their stories.",
+			Steps: []string{
+				"Replace generic enthusiasm with specific outcomes",
+				"Add percentages: 'reduced processing time by 40%'",
+				"Include scale metrics: 'handles 10x more transactions'",
+				"Mention ROI or cost savings with numbers",
+			},
+		})
+	}
+	
+	if breakdown.FiveWsScore < 9 {
+		improvements = append(improvements, Improvement{
+			Title:  "Complete the 5 Ws",
+			Impact: "Missing WHO, WHAT, WHEN, WHERE, WHY makes press releases unusable for journalists.",
+			Steps: []string{
+				"Ensure first paragraph answers all 5 Ws",
+				"Add specific date and location",
+				"Clearly identify your company and what you're announcing",
+				"Explain why this matters to the target audience",
+			},
+		})
+	}
+	
+	if breakdown.FluffScore < 10 {
+		improvements = append(improvements, Improvement{
+			Title:  "Eliminate Marketing Fluff",
+			Impact: "Hyperbolic language reduces credibility with journalists and readers.",
+			Steps: []string{
+				"Remove words like 'revolutionary', 'groundbreaking', 'world-class'",
+				"Replace vague claims with specific proof points",
+				"Back all claims with data or evidence",
+				"Focus on concrete benefits rather than emotional language",
+			},
+		})
+	}
+	
+	return improvements
+}
+
+func categorizeIssues(issues []string) map[string][]string {
+	categories := make(map[string][]string)
+	
+	for _, issue := range issues {
+		category := "General"
+		issueLower := strings.ToLower(issue)
+		
+		if strings.Contains(issueLower, "headline") || strings.Contains(issueLower, "title") {
+			category = "Headline & Title"
+		} else if strings.Contains(issueLower, "hook") || strings.Contains(issueLower, "opening") || strings.Contains(issueLower, "first sentence") {
+			category = "Opening Hook"
+		} else if strings.Contains(issueLower, "who") || strings.Contains(issueLower, "what") || strings.Contains(issueLower, "when") || strings.Contains(issueLower, "where") || strings.Contains(issueLower, "why") {
+			category = "5 Ws Coverage"
+		} else if strings.Contains(issueLower, "quote") || strings.Contains(issueLower, "metric") {
+			category = "Customer Evidence"
+		} else if strings.Contains(issueLower, "fluff") || strings.Contains(issueLower, "marketing") || strings.Contains(issueLower, "hyperbolic") {
+			category = "Professional Tone"
+		} else if strings.Contains(issueLower, "structure") || strings.Contains(issueLower, "paragraph") || strings.Contains(issueLower, "transition") {
+			category = "Document Structure"
+		} else if strings.Contains(issueLower, "sentence") || strings.Contains(issueLower, "readability") || strings.Contains(issueLower, "passive") {
+			category = "Writing Quality"
+		}
+		
+		categories[category] = append(categories[category], issue)
+	}
+	
+	return categories
 }
 
 // isPressReleaseContent analyzes content to determine if it looks like a press release
@@ -105,6 +410,28 @@ func isFAQSection(header string) bool {
 	
 	for _, pattern := range faqPatterns {
 		if strings.Contains(header, pattern) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// isNumberedFAQQuestion checks if a section header is a numbered FAQ question
+func isNumberedFAQQuestion(header string) bool {
+	header = strings.TrimSpace(header)
+	
+	// Check for patterns like "1. Question here", "2. Another question", etc.
+	// Also handle variations like "1) Question" or "Q1. Question"
+	patterns := []string{
+		`^\d+\.\s+.+`,      // "1. Question here"
+		`^\d+\)\s+.+`,      // "1) Question here"
+		`^Q\d+[\.\)]\s+.+`, // "Q1. Question" or "Q1) Question"
+		`^Question\s+\d+`,  // "Question 1"
+	}
+	
+	for _, pattern := range patterns {
+		if matched, _ := regexp.MatchString(pattern, header); matched {
 			return true
 		}
 	}
@@ -1050,12 +1377,28 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 		})
 	}
 
-	// Process sections with fuzzy logic
+	// Process sections with fuzzy logic and handle FAQ numbering
+	var faqContent strings.Builder
+	var inFAQSection bool
+	
 	for _, section := range allSections {
 		// Check for FAQ sections first (more specific)
 		if isFAQSection(section.name) {
 			sections.FAQs = section.content
+			faqContent.WriteString(section.content + "\n\n")
+			inFAQSection = true
 			continue
+		}
+
+		// Check if this is a numbered FAQ question (part of FAQ section)
+		if inFAQSection && isNumberedFAQQuestion(section.name) {
+			faqContent.WriteString("## " + section.name + "\n\n")
+			faqContent.WriteString(section.content + "\n\n")
+			continue
+		} else if inFAQSection {
+			// We've left the FAQ section, finalize it
+			sections.FAQs = strings.TrimSpace(faqContent.String())
+			inFAQSection = false
 		}
 
 		// Check for explicit press release header
@@ -1079,6 +1422,11 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 
 		// Default to other sections
 		sections.OtherSections[section.name] = section.content
+	}
+	
+	// Handle case where FAQ section continues to end of document
+	if inFAQSection && faqContent.Len() > 0 {
+		sections.FAQs = strings.TrimSpace(faqContent.String())
 	}
 
 	// Analyze PR with comprehensive quality metrics
