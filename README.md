@@ -1,7 +1,7 @@
 
 # pr-faq-validator
 
-AI-powered tool to analyze and score [PR-FAQ documents](https://github.com/bordenet/Engineering_Culture/blob/main/SDLC/The_PR-FAQ.md) with comprehensive quality metrics.
+AI-assisted tool to analyze and score [PR-FAQ documents](https://github.com/bordenet/Engineering_Culture/blob/main/SDLC/The_PR-FAQ.md) with comprehensive quality metrics.
 
 ## Overview
 

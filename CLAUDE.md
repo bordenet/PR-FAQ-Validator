@@ -89,7 +89,7 @@ The codebase follows a clean modular structure:
 ### Session Summary (August 2025)
 - **Fixed TUI alignment issues**: Resolved emoji rendering problems in warning boxes
 - **Enhanced README.md**: Simplified structure, updated sample document references
-- **Created high-quality example**: `example_prfaq_4.md` scoring 77/100 with:
+- **Created high-quality example**: `example_prfaq_1.md` scoring 77/100 with:
   - Perfect headline scoring (10/10)
   - Complete newsworthy hook (15/15)
   - Multiple high-scoring customer quotes with quantitative metrics
@@ -105,8 +105,8 @@ The codebase follows a clean modular structure:
 ## Testing
 
 Sample documents demonstrate scoring range:
-- `example_prfaq_1.md`: ~51/100 (typical first draft)
+- `example_prfaq_4.md`: ~51/100 (typical first draft)
 - `example_prfaq_3.md`: ~38/100 (needs significant improvement)
-- `example_prfaq_4.md`: ~77/100 (high-quality example with metrics-rich quotes)
+- `example_prfaq_1.md`: ~77/100 (high-quality example with metrics-rich quotes)
 
 The validator is intentionally demanding - scores above 80 are rare and indicate publication-ready quality.
