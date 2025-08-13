@@ -1368,6 +1368,18 @@ func comprehensivePRAnalysis(prContent string, title string, quoteScore int) *PR
 	// Get quote analysis from existing function
 	quoteAnalysis := analyzePRQuotes(prContent)
 	
+	// Add quote count feedback
+	var quoteCountIssues []string
+	if quoteAnalysis.TotalQuotes > 4 {
+		quoteCountIssues = append(quoteCountIssues, "Consider reducing quotes - press releases work best with 3-4 focused customer testimonials")
+	}
+	
+	// Combine quote count feedback with other issues
+	allIssues = append(allIssues, quoteCountIssues...)
+	
+	// Update the breakdown with the complete issue list
+	breakdown.Issues = allIssues
+	
 	return &PRScore{
 		TotalQuotes:       quoteAnalysis.TotalQuotes,
 		QuotesWithMetrics: quoteAnalysis.QuotesWithMetrics,

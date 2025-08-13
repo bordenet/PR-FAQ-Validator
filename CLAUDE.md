@@ -58,7 +58,7 @@ The codebase follows a clean modular structure:
   - Content Quality (35 pts): 5 Ws coverage, credibility, structure
   - Professional Quality (20 pts): Tone, readability, fluff detection
   - Customer Evidence (15 pts): Quote quality with quantitative metrics
-- Advanced features: quote metric extraction, marketing fluff detection, 5Ws validation
+- Advanced features: quote metric extraction, marketing fluff detection, 5Ws validation, quote count optimization
 
 **LLM Integration (internal/llm/llm.go)**:
 - `AnalyzeSection()` provides qualitative feedback only (no score influence)
@@ -94,6 +94,7 @@ The codebase follows a clean modular structure:
   - Complete newsworthy hook (15/15)
   - Multiple high-scoring customer quotes with quantitative metrics
   - Comprehensive company information and structured sections
+- **Added quote count feedback**: Documents with >4 quotes now get guidance to limit to 3-4 focused testimonials
 
 ### Key Architectural Decisions
 - **Hybrid scoring approach**: 100% deterministic algorithms for consistency, AI for insights
