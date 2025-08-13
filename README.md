@@ -73,7 +73,7 @@ Provides interactive terminal UI with:
 - **Score breakdown** across 4 categories (Structure, Content, Professional, Evidence)
 - **Strengths & improvements** with specific recommendations
 - **Quote analysis** with individual scoring and metric detection
-- **AI feedback** for detailed insights (optional)
+- **AI feedback** for detailed insights (with OpenAI API key)
 
 
 ## Quality Scoring Methodology
