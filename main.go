@@ -23,7 +23,60 @@ func main() {
 
 	fmt.Printf("== PR-FAQ Title ==\n%s\n\n", sections.Title)
 
+	// Display comprehensive PR scoring results
 	if sections.PressRelease != "" {
+		fmt.Printf("== Press Release Quality Score: %d/100 ==\n\n", sections.PRScore.OverallScore)
+		
+		// Quality breakdown
+		breakdown := sections.PRScore.QualityBreakdown
+		fmt.Println("== Quality Breakdown ==")
+		fmt.Printf("Structure & Hook:      %d/25 points\n", breakdown.HeadlineScore + breakdown.HookScore)
+		fmt.Printf("  - Headline Quality:   %d/10\n", breakdown.HeadlineScore)
+		fmt.Printf("  - Newsworthy Hook:    %d/15\n", breakdown.HookScore)
+		fmt.Printf("Content Quality:       %d/35 points\n", breakdown.FiveWsScore + breakdown.CredibilityScore + breakdown.StructureScore)
+		fmt.Printf("  - 5 Ws Coverage:      %d/15\n", breakdown.FiveWsScore)
+		fmt.Printf("  - Credibility:        %d/10\n", breakdown.CredibilityScore)
+		fmt.Printf("  - Structure:          %d/10\n", breakdown.StructureScore)
+		fmt.Printf("Professional Quality:  %d/25 points\n", breakdown.ToneScore + breakdown.FluffScore)
+		fmt.Printf("  - Tone & Readability: %d/10\n", breakdown.ToneScore)
+		fmt.Printf("  - Fluff Avoidance:    %d/15\n", breakdown.FluffScore)
+		fmt.Printf("Customer Evidence:     %d/15 points\n", breakdown.QuoteScore)
+		fmt.Printf("  - Quote Quality:      %d/15\n\n", breakdown.QuoteScore)
+		
+		// Strengths
+		if len(breakdown.Strengths) > 0 {
+			fmt.Println("== Strengths ==")
+			for _, strength := range breakdown.Strengths {
+				fmt.Printf("✓ %s\n", strength)
+			}
+			fmt.Println()
+		}
+		
+		// Issues to address
+		if len(breakdown.Issues) > 0 {
+			fmt.Println("== Areas for Improvement ==")
+			for _, issue := range breakdown.Issues {
+				fmt.Printf("⚠ %s\n", issue)
+			}
+			fmt.Println()
+		}
+		
+		// Detailed quote analysis if present
+		if len(sections.PRScore.MetricDetails) > 0 {
+			fmt.Printf("== Quote Analysis (%d quotes found) ==\n", sections.PRScore.TotalQuotes)
+			for i, detail := range sections.PRScore.MetricDetails {
+				fmt.Printf("\nQuote %d (Score: %d/10):\n", i+1, detail.Score)
+				fmt.Printf("\"%s\"\n", detail.Quote)
+				if len(detail.Metrics) > 0 {
+					fmt.Printf("Metrics detected: %v\n", detail.Metrics)
+					fmt.Printf("Metric types: %v\n", detail.MetricTypes)
+				} else {
+					fmt.Println("No quantitative metrics detected")
+				}
+			}
+			fmt.Println()
+		}
+
 		fmt.Println("Analyzing Press Release...")
 		feedback, err := llm.AnalyzeSection("Press Release", sections.PressRelease)
 		if err != nil {

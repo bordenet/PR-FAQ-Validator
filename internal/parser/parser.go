@@ -3,6 +3,7 @@ package parser
 import (
 	"bufio"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -12,6 +13,977 @@ type SpecSections struct {
 	FAQs          string
 	Metrics       string
 	OtherSections map[string]string
+	PRScore       *PRScore
+}
+
+type PRScore struct {
+	TotalQuotes       int
+	QuotesWithMetrics int
+	MetricDetails     []MetricInfo
+	OverallScore      int // 0-100
+	QualityBreakdown  PRQualityBreakdown
+}
+
+type MetricInfo struct {
+	Quote       string
+	Metrics     []string
+	MetricTypes []string // percentage, number, ratio, etc.
+	Score       int      // 0-10 for this quote
+}
+
+type PRQualityBreakdown struct {
+	// Structure & Hook (25 points)
+	HeadlineScore    int    // 0-10: Clear, compelling headline
+	HookScore        int    // 0-15: Newsworthy hook with specificity
+	
+	// Content Quality (35 points)
+	FiveWsScore      int    // 0-15: Who, what, when, where, why coverage
+	CredibilityScore int    // 0-10: Supporting details, data, context
+	StructureScore   int    // 0-10: Inverted pyramid structure
+	
+	// Professional Quality (25 points)
+	ToneScore        int    // 0-10: Professional but readable
+	FluffScore       int    // 0-15: Absence of marketing fluff/hype
+	
+	// Customer Evidence (15 points) - existing quote scoring
+	QuoteScore       int    // 0-15: Quality customer quotes with metrics
+	
+	// Detailed feedback
+	Issues           []string
+	Strengths        []string
+}
+
+// isPressReleaseContent analyzes content to determine if it looks like a press release
+func isPressReleaseContent(content string) bool {
+	content = strings.ToLower(content)
+	
+	// Check for date patterns commonly found in press releases
+	datePatterns := []string{
+		`\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4}`,
+		`\b\d{1,2}/\d{1,2}/\d{4}`,
+		`\b\d{4}-\d{1,2}-\d{1,2}`,
+	}
+	
+	for _, pattern := range datePatterns {
+		if matched, _ := regexp.MatchString(pattern, content); matched {
+			// Also check for announcement language
+			announceWords := []string{"announce", "today", "excited", "pleased", "proud", "launch", "introduce", "unveil", "reveal"}
+			for _, word := range announceWords {
+				if strings.Contains(content, word) {
+					return true
+				}
+			}
+		}
+	}
+	
+	// Check for press release structure indicators
+	prIndicators := []string{
+		"business wire", "pr newswire", "press release", 
+		"for immediate release", "contact:", "about ",
+		"announces", "today announced", "is excited to announce",
+		"is pleased to announce", "is proud to announce",
+	}
+	
+	for _, indicator := range prIndicators {
+		if strings.Contains(content, indicator) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// isFAQSection checks if a section header indicates FAQ content
+func isFAQSection(header string) bool {
+	header = strings.ToLower(strings.TrimSpace(header))
+	
+	faqPatterns := []string{
+		"faq", "faqs", "frequently asked questions", 
+		"questions and answers", "q&a", "q & a",
+		"common questions", "questions", "internal faq",
+	}
+	
+	for _, pattern := range faqPatterns {
+		if strings.Contains(header, pattern) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// extractQuotes finds customer quotes in press release content
+func extractQuotes(content string) []string {
+	var quotes []string
+	
+	// Look for quoted text patterns - use Unicode code points for curly quotes
+	quotePatterns := []string{
+		`"(.+?)"`,              // Standard double quotes
+		"\u201C(.+?)\u201D",    // Curly quotes (U+201C and U+201D)
+		`'(.+?)'`,              // Single quotes
+		"\u2018(.+?)\u2019",    // Curly single quotes (U+2018 and U+2019)
+	}
+	
+	for _, pattern := range quotePatterns {
+		re := regexp.MustCompile(`(?s)` + pattern) // (?s) enables multiline mode
+		matches := re.FindAllStringSubmatch(content, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				quote := strings.TrimSpace(match[1])
+				// Filter out very short quotes (likely not customer testimonials)
+				if len(quote) > 20 {
+					quotes = append(quotes, quote)
+				}
+			}
+		}
+	}
+	return quotes
+}
+
+// detectMetricsInText finds quantitative metrics in text
+func detectMetricsInText(text string) ([]string, []string) {
+	var metrics []string
+	var metricTypes []string
+	
+	// Percentage patterns
+	percentagePatterns := []string{
+		`\d+(?:\.\d+)?%`,                    // 50%, 12.5%
+		`\d+(?:\.\d+)?\s*percent`,           // 50 percent
+		`\d+(?:\.\d+)?\s*percentage\s*points?`, // 12 percentage points
+	}
+	
+	for _, pattern := range percentagePatterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		matches := re.FindAllString(text, -1)
+		for _, match := range matches {
+			metrics = append(metrics, match)
+			metricTypes = append(metricTypes, "percentage")
+		}
+	}
+	
+	// Ratio and multiplier patterns
+	ratioPatterns := []string{
+		`\d+x`,                             // 2x, 10x improvement
+		`\d+(?:\.\d+)?:\d+(?:\.\d+)?`,     // 2:1, 3.5:1 ratios
+		`\d+(?:\.\d+)?\s*times`,           // 3 times faster
+	}
+	
+	for _, pattern := range ratioPatterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		matches := re.FindAllString(text, -1)
+		for _, match := range matches {
+			metrics = append(metrics, match)
+			metricTypes = append(metricTypes, "ratio")
+		}
+	}
+	
+	// Absolute number patterns with business context
+	numberPatterns := []string{
+		`\$\d+(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|k|m|b))?`, // $1.5M, $500K
+		`\d+(?:,\d{3})*(?:\.\d+)?\s*(?:milliseconds?|seconds?|minutes?|hours?|days?)`, // 50ms, 2.5 seconds
+		`\d+(?:,\d{3})*(?:\.\d+)?\s*(?:customers?|users?|transactions?)`, // 1000 customers
+		`\d+(?:,\d{3})*(?:\.\d+)?\s*(?:basis\s*points?)`, // 200 basis points
+	}
+	
+	for _, pattern := range numberPatterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		matches := re.FindAllString(text, -1)
+		for _, match := range matches {
+			metrics = append(metrics, match)
+			metricTypes = append(metricTypes, "absolute")
+		}
+	}
+	
+	// NPS, score-based metrics
+	scorePatterns := []string{
+		`nps\s*(?:score\s*)?(?:by\s*)?\d+(?:\.\d+)?\s*points?`, // NPS by 12 points
+		`\d+(?:\.\d+)?\s*(?:point|points)\s*(?:improvement|increase|decrease)`, // 12 points improvement
+		`score\s*(?:of\s*)?\d+(?:\.\d+)?`,                      // score of 9.2
+	}
+	
+	for _, pattern := range scorePatterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		matches := re.FindAllString(text, -1)
+		for _, match := range matches {
+			metrics = append(metrics, match)
+			metricTypes = append(metricTypes, "score")
+		}
+	}
+	
+	return metrics, metricTypes
+}
+
+// scoreQuote evaluates the quality of a customer quote based on metrics
+func scoreQuote(quote string, metrics []string, metricTypes []string) int {
+	if len(metrics) == 0 {
+		return 0 // No metrics = 0 points
+	}
+	
+	score := 2 // Base score for having any metrics
+	
+	// Bonus points for different metric types
+	typeBonus := make(map[string]bool)
+	for _, metricType := range metricTypes {
+		if !typeBonus[metricType] {
+			typeBonus[metricType] = true
+			switch metricType {
+			case "percentage":
+				score += 3 // Percentages are highly valuable
+			case "ratio":
+				score += 2 // Ratios show relative improvement
+			case "absolute":
+				score += 2 // Absolute numbers show scale
+			case "score":
+				score += 1 // Score improvements are good
+			}
+		}
+	}
+	
+	// Bonus for multiple metrics in one quote
+	if len(metrics) >= 2 {
+		score += 2
+	}
+	if len(metrics) >= 3 {
+		score += 1
+	}
+	
+	// Cap at 10
+	if score > 10 {
+		score = 10
+	}
+	
+	return score
+}
+
+// analyzePRQuotes evaluates customer quotes in press release content
+func analyzePRQuotes(prContent string) *PRScore {
+	if prContent == "" {
+		return &PRScore{OverallScore: 0}
+	}
+	
+	quotes := extractQuotes(prContent)
+	
+	// Debug: print the actual content being analyzed (disabled)
+	// fmt.Printf("DEBUG: Analyzing PR content with %d characters\n", len(prContent))
+	// fmt.Printf("DEBUG: Found %d quotes\n", len(quotes))
+	
+	score := &PRScore{
+		TotalQuotes:   len(quotes),
+		MetricDetails: make([]MetricInfo, 0),
+	}
+	
+	totalQuoteScore := 0
+	quotesWithMetrics := 0
+	
+	for _, quote := range quotes {
+		metrics, metricTypes := detectMetricsInText(quote)
+		quoteScore := scoreQuote(quote, metrics, metricTypes)
+		
+		if len(metrics) > 0 {
+			quotesWithMetrics++
+		}
+		
+		totalQuoteScore += quoteScore
+		
+		score.MetricDetails = append(score.MetricDetails, MetricInfo{
+			Quote:       quote,
+			Metrics:     metrics,
+			MetricTypes: metricTypes,
+			Score:       quoteScore,
+		})
+	}
+	
+	score.QuotesWithMetrics = quotesWithMetrics
+	
+	// Calculate overall score (0-100)
+	if len(quotes) == 0 {
+		score.OverallScore = 0
+	} else {
+		// Base score: 20 points for having quotes
+		baseScore := 20
+		
+		// Metric bonus: up to 60 points based on quote quality
+		metricBonus := 0
+		if len(quotes) > 0 {
+			avgQuoteScore := totalQuoteScore / len(quotes)
+			metricBonus = (avgQuoteScore * 60) / 10 // Scale 0-10 to 0-60
+		}
+		
+		// Coverage bonus: up to 20 points for having multiple quotes with metrics
+		coverageBonus := 0
+		if quotesWithMetrics > 0 {
+			coverageBonus = 10
+			if quotesWithMetrics > 1 {
+				coverageBonus = 20
+			}
+		}
+		
+		score.OverallScore = baseScore + metricBonus + coverageBonus
+		if score.OverallScore > 100 {
+			score.OverallScore = 100
+		}
+	}
+	
+	return score
+}
+
+// analyzeHeadlineQuality evaluates headline effectiveness
+func analyzeHeadlineQuality(title string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 0
+	
+	if title == "" {
+		issues = append(issues, "Missing headline/title")
+		return 0, issues, strengths
+	}
+	
+	// Length analysis (ideal: 6-12 words, 50-80 characters)
+	words := len(strings.Fields(title))
+	chars := len(title)
+	
+	if chars >= 50 && chars <= 80 && words >= 6 && words <= 12 {
+		score += 3
+		strengths = append(strengths, "Headline length is optimal")
+	} else if chars > 100 || words > 15 {
+		issues = append(issues, "Headline too long (reduces scannability)")
+	} else if chars < 30 || words < 4 {
+		issues = append(issues, "Headline too short (lacks specificity)")
+	} else {
+		score += 1
+	}
+	
+	// Active voice and strong verbs
+	strongVerbs := []string{"launches", "announces", "introduces", "unveils", "delivers", "creates", "develops", "achieves", "reduces", "increases", "improves", "transforms"}
+	titleLower := strings.ToLower(title)
+	
+	hasStrongVerb := false
+	for _, verb := range strongVerbs {
+		if strings.Contains(titleLower, verb) {
+			hasStrongVerb = true
+			break
+		}
+	}
+	
+	if hasStrongVerb {
+		score += 2
+		strengths = append(strengths, "Uses strong action verbs")
+	} else {
+		issues = append(issues, "Consider using stronger action verbs")
+	}
+	
+	// Specificity check (numbers, percentages, specific outcomes)
+	hasSpecifics := false
+	specificityPatterns := []string{`\d+%`, `\d+x`, `\d+(?:,\d{3})*`, `\$\d+`, `by \d+`, `up to \d+`}
+	
+	for _, pattern := range specificityPatterns {
+		if matched, _ := regexp.MatchString(pattern, title); matched {
+			hasSpecifics = true
+			break
+		}
+	}
+	
+	if hasSpecifics {
+		score += 3
+		strengths = append(strengths, "Includes specific metrics or outcomes")
+	} else {
+		issues = append(issues, "Consider adding specific metrics to the headline")
+	}
+	
+	// Avoid generic/weak language
+	weakLanguage := []string{"new", "innovative", "cutting-edge", "revolutionary", "world-class", "leading", "comprehensive", "robust"}
+	hasWeakLanguage := false
+	
+	for _, weak := range weakLanguage {
+		if strings.Contains(titleLower, weak) {
+			hasWeakLanguage = true
+			break
+		}
+	}
+	
+	if hasWeakLanguage {
+		issues = append(issues, "Avoid generic marketing language in headlines")
+	} else {
+		score += 2
+		strengths = append(strengths, "Avoids generic marketing language")
+	}
+	
+	return score, issues, strengths
+}
+
+// analyzeNewswortyHook evaluates the opening for immediate relevance and impact
+func analyzeNewswortyHook(content string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 0
+	
+	// Get first paragraph (hook)
+	paragraphs := strings.Split(content, "\n\n")
+	if len(paragraphs) == 0 {
+		issues = append(issues, "No content to analyze")
+		return 0, issues, strengths
+	}
+	
+	hook := strings.TrimSpace(paragraphs[0])
+	if hook == "" && len(paragraphs) > 1 {
+		hook = strings.TrimSpace(paragraphs[1])
+	}
+	
+	if hook == "" {
+		issues = append(issues, "Missing opening hook")
+		return 0, issues, strengths
+	}
+	
+	hookLower := strings.ToLower(hook)
+	
+	// Check for timeliness indicators
+	timelinessWords := []string{"today", "this week", "announces", "launched", "released", "unveiled", "now available"}
+	hasTimeliness := false
+	
+	for _, word := range timelinessWords {
+		if strings.Contains(hookLower, word) {
+			hasTimeliness = true
+			break
+		}
+	}
+	
+	if hasTimeliness {
+		score += 3
+		strengths = append(strengths, "Opens with timely announcement")
+	} else {
+		issues = append(issues, "Hook lacks immediate timeliness")
+	}
+	
+	// Check for specificity (metrics, outcomes, concrete details)
+	specificityIndicators := []string{`\d+%`, `\d+x`, `cuts .+ by`, `improves .+ by`, `reduces .+ by`, `increases .+ by`}
+	hasSpecificity := false
+	
+	for _, pattern := range specificityIndicators {
+		if matched, _ := regexp.MatchString(`(?i)`+pattern, hook); matched {
+			hasSpecificity = true
+			break
+		}
+	}
+	
+	if hasSpecificity {
+		score += 4
+		strengths = append(strengths, "Hook includes specific, measurable outcomes")
+	} else {
+		issues = append(issues, "Hook lacks specific metrics or outcomes")
+	}
+	
+	// Check for industry relevance/pain point addressing
+	problemWords := []string{"solves", "addresses", "tackles", "eliminates", "reduces", "improves", "streamlines", "automates"}
+	addressesProblem := false
+	
+	for _, word := range problemWords {
+		if strings.Contains(hookLower, word) {
+			addressesProblem = true
+			break
+		}
+	}
+	
+	if addressesProblem {
+		score += 3
+		strengths = append(strengths, "Addresses clear problem or improvement")
+	} else {
+		issues = append(issues, "Hook doesn't clearly address a problem or need")
+	}
+	
+	// Check for company/product clarity (who is doing what)
+	sentences := strings.Split(hook, ".")
+	if len(sentences) > 0 {
+		firstSentence := sentences[0]
+		// Should mention company and action
+		if strings.Contains(firstSentence, ",") && (strings.Contains(strings.ToLower(firstSentence), "announce") || strings.Contains(strings.ToLower(firstSentence), "launch")) {
+			score += 2
+			strengths = append(strengths, "Clear company identification and action")
+		} else {
+			issues = append(issues, "First sentence should clearly identify who is doing what")
+		}
+	}
+	
+	// Avoid fluff language in hook
+	fluffWords := []string{"excited", "pleased", "proud", "thrilled", "delighted", "revolutionary", "groundbreaking", "cutting-edge"}
+	hasFluff := false
+	
+	for _, fluff := range fluffWords {
+		if strings.Contains(hookLower, fluff) {
+			hasFluff = true
+			break
+		}
+	}
+	
+	if hasFluff {
+		issues = append(issues, "Hook contains marketing fluff - focus on concrete value")
+		score -= 1
+	} else {
+		score += 3
+		strengths = append(strengths, "Hook avoids marketing fluff")
+	}
+	
+	return score, issues, strengths
+}
+
+// analyzeFiveWs checks coverage of who, what, when, where, why
+func analyzeFiveWs(content string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 0
+	
+	// Get first 2-3 paragraphs for analysis
+	paragraphs := strings.Split(content, "\n\n")
+	leadContent := ""
+	for i := 0; i < min(3, len(paragraphs)); i++ {
+		leadContent += paragraphs[i] + " "
+	}
+	leadContentLower := strings.ToLower(leadContent)
+	
+	// WHO: Company/organization clearly identified
+	companyPatterns := []string{`\b[A-Z][a-z]+\s+(?:Inc|Corp|Company|LLC|Ltd)`, `[A-Z][a-zA-Z]+\s+announced`, `[A-Z][a-zA-Z]+\s+today`}
+	hasWho := false
+	
+	for _, pattern := range companyPatterns {
+		if matched, _ := regexp.MatchString(pattern, leadContent); matched {
+			hasWho = true
+			break
+		}
+	}
+	
+	if hasWho {
+		score += 3
+		strengths = append(strengths, "Clearly identifies WHO (company/organization)")
+	} else {
+		issues = append(issues, "WHO: Company/organization not clearly identified in lead")
+	}
+	
+	// WHAT: Product/service/action clearly described
+	actionWords := []string{"announces", "launches", "introduces", "unveils", "releases", "develops", "creates"}
+	hasWhat := false
+	
+	for _, action := range actionWords {
+		if strings.Contains(leadContentLower, action) {
+			hasWhat = true
+			break
+		}
+	}
+	
+	if hasWhat {
+		score += 3
+		strengths = append(strengths, "Clearly describes WHAT (action/product/service)")
+	} else {
+		issues = append(issues, "WHAT: Action or offering not clearly described")
+	}
+	
+	// WHEN: Timing/date mentioned
+	timePatterns := []string{`\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d`, `today`, `this week`, `this month`, `\d{4}`, `yesterday`, `recently`}
+	hasWhen := false
+	
+	for _, pattern := range timePatterns {
+		if matched, _ := regexp.MatchString(`(?i)`+pattern, leadContent); matched {
+			hasWhen = true
+			break
+		}
+	}
+	
+	if hasWhen {
+		score += 3
+		strengths = append(strengths, "Includes WHEN (timing/date)")
+	} else {
+		issues = append(issues, "WHEN: Timing or date not specified")
+	}
+	
+	// WHERE: Location/market mentioned
+	wherePatterns := []string{`[A-Z][a-z]+,\s+[A-Z]{2}`, `[A-Z][a-z]+\s+\([A-Z][a-z]+\s+Wire\)`, `headquarters`, `market`, `globally`, `worldwide`, `nation`}
+	hasWhere := false
+	
+	for _, pattern := range wherePatterns {
+		if matched, _ := regexp.MatchString(pattern, leadContent); matched {
+			hasWhere = true
+			break
+		}
+	}
+	
+	if hasWhere {
+		score += 2
+		strengths = append(strengths, "Mentions WHERE (location/market)")
+	} else {
+		issues = append(issues, "WHERE: Location or market context could be clearer")
+	}
+	
+	// WHY: Reason/problem/benefit explained
+	whyIndicators := []string{"because", "to help", "to address", "to solve", "to improve", "to reduce", "to increase", "enables", "allows", "provides"}
+	hasWhy := false
+	
+	for _, indicator := range whyIndicators {
+		if strings.Contains(leadContentLower, indicator) {
+			hasWhy = true
+			break
+		}
+	}
+	
+	if hasWhy {
+		score += 4
+		strengths = append(strengths, "Explains WHY (reason/benefit/problem solved)")
+	} else {
+		issues = append(issues, "WHY: Reason or benefit not clearly explained")
+	}
+	
+	return score, issues, strengths
+}
+
+// analyzeToneAndReadability evaluates professional tone and accessibility
+func analyzeToneAndReadability(content string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 5 // Start with neutral score
+	
+	contentLower := strings.ToLower(content)
+	
+	// Check sentence length (ideal: 15-20 words average)
+	sentences := regexp.MustCompile(`[.!?]+`).Split(content, -1)
+	totalWords := 0
+	longSentences := 0
+	
+	for _, sentence := range sentences {
+		words := len(strings.Fields(strings.TrimSpace(sentence)))
+		totalWords += words
+		if words > 25 {
+			longSentences++
+		}
+	}
+	
+	if len(sentences) > 1 {
+		avgWordsPerSentence := totalWords / len(sentences)
+		if avgWordsPerSentence >= 15 && avgWordsPerSentence <= 20 {
+			score += 2
+			strengths = append(strengths, "Good sentence length for readability")
+		} else if avgWordsPerSentence > 25 {
+			issues = append(issues, "Sentences too long - break into shorter, clearer statements")
+		}
+	}
+	
+	if longSentences > len(sentences)/3 {
+		issues = append(issues, "Too many overly long sentences - impacts readability")
+		score -= 1
+	}
+	
+	// Check for passive voice overuse
+	passiveIndicators := []string{"is being", "was being", "are being", "were being", "has been", "have been", "had been", "will be"}
+	passiveCount := 0
+	
+	for _, passive := range passiveIndicators {
+		passiveCount += strings.Count(contentLower, passive)
+	}
+	
+	if passiveCount > len(sentences)/4 {
+		issues = append(issues, "Overuse of passive voice - use active voice for clarity")
+		score -= 1
+	} else {
+		score += 1
+		strengths = append(strengths, "Good use of active voice")
+	}
+	
+	// Check for jargon density
+	techJargon := []string{"synergies", "paradigm", "leverage", "ecosystem", "scalable", "turnkey", "best-in-class", "enterprise-grade"}
+	jargonCount := 0
+	
+	for _, jargon := range techJargon {
+		if strings.Contains(contentLower, jargon) {
+			jargonCount++
+		}
+	}
+	
+	if jargonCount > 3 {
+		issues = append(issues, "Too much technical jargon - write for broader audience")
+		score -= 1
+	} else if jargonCount == 0 {
+		score += 1
+		strengths = append(strengths, "Avoids unnecessary jargon")
+	}
+	
+	// Check for quotation variety and quality
+	quotes := extractQuotes(content)
+	executiveFluff := []string{"excited", "pleased", "proud", "thrilled", "honored", "delighted"}
+	fluffyQuotes := 0
+	
+	for _, quote := range quotes {
+		quoteLower := strings.ToLower(quote)
+		for _, fluff := range executiveFluff {
+			if strings.Contains(quoteLower, fluff) {
+				fluffyQuotes++
+				break
+			}
+		}
+	}
+	
+	if len(quotes) > 0 {
+		if fluffyQuotes < len(quotes)/2 {
+			score += 1
+			strengths = append(strengths, "Quotes provide substantive insight")
+		} else {
+			issues = append(issues, "Too many generic 'excited' quotes - add substantive insights")
+		}
+	}
+	
+	return score, issues, strengths
+}
+
+// analyzeMarketingFluff detects and penalizes excessive promotional language
+func analyzeMarketingFluff(content string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 15 // Start with full points, deduct for fluff
+	
+	contentLower := strings.ToLower(content)
+	
+	// Hyperbolic adjectives
+	hypeWords := []string{
+		"revolutionary", "groundbreaking", "cutting-edge", "world-class", 
+		"industry-leading", "best-in-class", "state-of-the-art", "next-generation",
+		"breakthrough", "game-changing", "disruptive", "unprecedented",
+		"ultimate", "premier", "superior", "exceptional", "outstanding",
+	}
+	
+	hypeCount := 0
+	for _, hype := range hypeWords {
+		if strings.Contains(contentLower, hype) {
+			hypeCount++
+		}
+	}
+	
+	if hypeCount > 3 {
+		score -= 5
+		issues = append(issues, "Excessive hyperbolic language reduces credibility")
+	} else if hypeCount > 1 {
+		score -= 2
+		issues = append(issues, "Consider reducing promotional adjectives")
+	} else if hypeCount == 0 {
+		strengths = append(strengths, "Avoids hyperbolic marketing language")
+	}
+	
+	// Emotional fluff in quotes
+	emotionalFluff := []string{"excited", "thrilled", "delighted", "pleased", "proud", "honored"}
+	quotes := extractQuotes(content)
+	fluffyQuotes := 0
+	
+	for _, quote := range quotes {
+		quoteLower := strings.ToLower(quote)
+		for _, fluff := range emotionalFluff {
+			if strings.Contains(quoteLower, fluff) {
+				fluffyQuotes++
+				break
+			}
+		}
+	}
+	
+	if len(quotes) > 0 {
+		fluffRatio := float64(fluffyQuotes) / float64(len(quotes))
+		if fluffRatio > 0.7 {
+			score -= 4
+			issues = append(issues, "Most quotes are generic emotional responses")
+		} else if fluffRatio > 0.3 {
+			score -= 2
+			issues = append(issues, "Some quotes lack substantive content")
+		} else {
+			strengths = append(strengths, "Quotes provide meaningful insights")
+		}
+	}
+	
+	// Vague benefits without proof
+	vagueTerms := []string{"comprehensive solution", "robust platform", "seamless integration", "enhanced productivity", "improved efficiency", "optimal performance"}
+	vagueCount := 0
+	
+	for _, vague := range vagueTerms {
+		if strings.Contains(contentLower, vague) {
+			vagueCount++
+		}
+	}
+	
+	if vagueCount > 2 {
+		score -= 3
+		issues = append(issues, "Vague benefit claims need specific proof points")
+	} else if vagueCount == 0 {
+		strengths = append(strengths, "Avoids vague, unsubstantiated claims")
+	}
+	
+	// Check for proof backing claims
+	proofIndicators := []string{`\d+%`, `\d+x`, `study shows`, `research indicates`, `data reveals`, `according to`, `measured`, `demonstrated`}
+	hasProof := false
+	
+	for _, pattern := range proofIndicators {
+		if matched, _ := regexp.MatchString(`(?i)`+pattern, content); matched {
+			hasProof = true
+			break
+		}
+	}
+	
+	if hasProof {
+		strengths = append(strengths, "Backs claims with data or evidence")
+	} else {
+		score -= 1
+		issues = append(issues, "Claims would be stronger with supporting data")
+	}
+	
+	return score, issues, strengths
+}
+
+// analyzeStructure evaluates inverted pyramid and logical flow
+func analyzeStructure(content string) (int, []string, []string) {
+	var issues []string
+	var strengths []string
+	score := 0
+	
+	paragraphs := strings.Split(content, "\n\n")
+	if len(paragraphs) < 3 {
+		issues = append(issues, "Press release too short for proper structure analysis")
+		return 2, issues, strengths
+	}
+	
+	// First paragraph should contain key info (lead)
+	firstPara := strings.TrimSpace(paragraphs[0])
+	if firstPara == "" && len(paragraphs) > 1 {
+		firstPara = strings.TrimSpace(paragraphs[1])
+	}
+	
+	// Lead should be substantial but not too long
+	leadWords := len(strings.Fields(firstPara))
+	if leadWords >= 25 && leadWords <= 50 {
+		score += 3
+		strengths = append(strengths, "Lead paragraph has appropriate length")
+	} else if leadWords > 60 {
+		issues = append(issues, "Lead paragraph too long - should be concise")
+	} else if leadWords < 20 {
+		issues = append(issues, "Lead paragraph too brief - lacks key details")
+	}
+	
+	// Check for supporting details in middle paragraphs
+	middleContent := ""
+	startIdx := 1
+	endIdx := len(paragraphs) - 2
+	if endIdx <= startIdx {
+		endIdx = len(paragraphs) - 1
+	}
+	
+	for i := startIdx; i < endIdx; i++ {
+		middleContent += paragraphs[i] + " "
+	}
+	
+	if len(middleContent) > 0 {
+		// Should contain supporting details, context, or additional quotes
+		supportingElements := []string{"according to", "the company", "additionally", "furthermore", "the solution", "customers"}
+		hasSupporting := false
+		
+		for _, element := range supportingElements {
+			if strings.Contains(strings.ToLower(middleContent), element) {
+				hasSupporting = true
+				break
+			}
+		}
+		
+		if hasSupporting {
+			score += 3
+			strengths = append(strengths, "Includes supporting details and context")
+		} else {
+			issues = append(issues, "Middle content lacks supporting details")
+		}
+	}
+	
+	// Last paragraph should contain boilerplate (about company)
+	if len(paragraphs) >= 3 {
+		lastPara := strings.ToLower(paragraphs[len(paragraphs)-1])
+		boilerplateIndicators := []string{"about ", "founded", "headquartered", "company", "organization", "learn more"}
+		hasBoilerplate := false
+		
+		for _, indicator := range boilerplateIndicators {
+			if strings.Contains(lastPara, indicator) {
+				hasBoilerplate = true
+				break
+			}
+		}
+		
+		if hasBoilerplate {
+			score += 2
+			strengths = append(strengths, "Includes proper company boilerplate")
+		} else {
+			issues = append(issues, "Missing company boilerplate information")
+		}
+	}
+	
+	// Check for logical flow and transitions
+	transitionWords := []string{"additionally", "furthermore", "moreover", "however", "meanwhile", "as a result"}
+	hasTransitions := false
+	
+	for _, transition := range transitionWords {
+		if strings.Contains(strings.ToLower(content), transition) {
+			hasTransitions = true
+			break
+		}
+	}
+	
+	if hasTransitions {
+		score += 2
+		strengths = append(strengths, "Uses transitions for logical flow")
+	} else if len(paragraphs) > 4 {
+		issues = append(issues, "Consider adding transitions between sections")
+	}
+	
+	return score, issues, strengths
+}
+
+// comprehensivePRAnalysis combines all quality metrics
+func comprehensivePRAnalysis(prContent string, title string, quoteScore int) *PRScore {
+	if prContent == "" {
+		return &PRScore{OverallScore: 0}
+	}
+	
+	// Analyze each component
+	headlineScore, headlineIssues, headlineStrengths := analyzeHeadlineQuality(title)
+	hookScore, hookIssues, hookStrengths := analyzeNewswortyHook(prContent)
+	fiveWsScore, fiveWsIssues, fiveWsStrengths := analyzeFiveWs(prContent)
+	structureScore, structIssues, structStrengths := analyzeStructure(prContent)
+	toneScore, toneIssues, toneStrengths := analyzeToneAndReadability(prContent)
+	fluffScore, fluffIssues, fluffStrengths := analyzeMarketingFluff(prContent)
+	
+	// Combine all issues and strengths
+	allIssues := append(headlineIssues, hookIssues...)
+	allIssues = append(allIssues, fiveWsIssues...)
+	allIssues = append(allIssues, structIssues...)
+	allIssues = append(allIssues, toneIssues...)
+	allIssues = append(allIssues, fluffIssues...)
+	
+	allStrengths := append(headlineStrengths, hookStrengths...)
+	allStrengths = append(allStrengths, fiveWsStrengths...)
+	allStrengths = append(allStrengths, structStrengths...)
+	allStrengths = append(allStrengths, toneStrengths...)
+	allStrengths = append(allStrengths, fluffStrengths...)
+	
+	// Calculate overall score (100 points total)
+	totalScore := headlineScore + hookScore + fiveWsScore + structureScore + toneScore + fluffScore + quoteScore
+	
+	breakdown := PRQualityBreakdown{
+		HeadlineScore:    headlineScore,
+		HookScore:        hookScore,
+		FiveWsScore:      fiveWsScore,
+		CredibilityScore: toneScore, // Use tone score for credibility
+		StructureScore:   structureScore,
+		ToneScore:        toneScore,
+		FluffScore:       fluffScore,
+		QuoteScore:       quoteScore,
+		Issues:           allIssues,
+		Strengths:        allStrengths,
+	}
+	
+	// Get quote analysis from existing function
+	quoteAnalysis := analyzePRQuotes(prContent)
+	
+	return &PRScore{
+		TotalQuotes:       quoteAnalysis.TotalQuotes,
+		QuotesWithMetrics: quoteAnalysis.QuotesWithMetrics,
+		MetricDetails:     quoteAnalysis.MetricDetails,
+		OverallScore:      totalScore,
+		QualityBreakdown:  breakdown,
+	}
 }
 
 // ParsePRFAQ reads a markdown file and extracts key sections
@@ -26,9 +998,15 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 		OtherSections: make(map[string]string),
 	}
 
+	type sectionInfo struct {
+		name    string
+		content string
+	}
+
 	var currentSection string
 	var sectionBuffer strings.Builder
 	var titleSet bool
+	var allSections []sectionInfo
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -46,16 +1024,10 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 			// Save the previous section's content
 			if currentSection != "" {
 				content := strings.TrimSpace(sectionBuffer.String())
-				switch currentSection {
-				case "Press Release":
-					sections.PressRelease = content
-				case "FAQ", "FAQs":
-					sections.FAQs = content
-				case "Success Metrics", "Key Metrics":
-					sections.Metrics = content
-				default:
-					sections.OtherSections[currentSection] = content
-				}
+				allSections = append(allSections, sectionInfo{
+					name:    currentSection,
+					content: content,
+				})
 				sectionBuffer.Reset()
 			}
 
@@ -72,16 +1044,50 @@ func ParsePRFAQ(path string) (*SpecSections, error) {
 	// Capture last section
 	if currentSection != "" {
 		content := strings.TrimSpace(sectionBuffer.String())
-		switch currentSection {
-		case "Press Release":
-			sections.PressRelease = content
-		case "FAQ", "FAQs":
-			sections.FAQs = content
-		case "Success Metrics", "Key Metrics":
-			sections.Metrics = content
-		default:
-			sections.OtherSections[currentSection] = content
+		allSections = append(allSections, sectionInfo{
+			name:    currentSection,
+			content: content,
+		})
+	}
+
+	// Process sections with fuzzy logic
+	for _, section := range allSections {
+		// Check for FAQ sections first (more specific)
+		if isFAQSection(section.name) {
+			sections.FAQs = section.content
+			continue
 		}
+
+		// Check for explicit press release header
+		if strings.ToLower(section.name) == "press release" {
+			sections.PressRelease = section.content
+			continue
+		}
+
+		// Check for metrics sections
+		lowerName := strings.ToLower(section.name)
+		if strings.Contains(lowerName, "success metrics") || strings.Contains(lowerName, "key metrics") {
+			sections.Metrics = section.content
+			continue
+		}
+
+		// Use fuzzy logic to detect press release content
+		if sections.PressRelease == "" && isPressReleaseContent(section.content) {
+			sections.PressRelease = section.content
+			continue
+		}
+
+		// Default to other sections
+		sections.OtherSections[section.name] = section.content
+	}
+
+	// Analyze PR with comprehensive quality metrics
+	if sections.PressRelease != "" {
+		quoteAnalysis := analyzePRQuotes(sections.PressRelease)
+		quoteScore := (quoteAnalysis.OverallScore * 15) / 100 // Scale to 15 points max
+		sections.PRScore = comprehensivePRAnalysis(sections.PressRelease, sections.Title, quoteScore)
+	} else {
+		sections.PRScore = &PRScore{OverallScore: 0}
 	}
 
 	return sections, nil
