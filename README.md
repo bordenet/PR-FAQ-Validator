@@ -69,8 +69,6 @@ Automatically detects sections regardless of headers ("Press Release", "Announce
 
 ## Output
 
-![Sample Output](docs/sample-output.png)
-
 Provides interactive terminal UI with:
 - **Score breakdown** across 4 categories (Structure, Content, Professional, Evidence)
 - **Strengths & improvements** with specific recommendations
