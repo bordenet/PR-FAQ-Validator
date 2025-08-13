@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bordenet/pr-faq-validator/internal/llm"
 	"github.com/bordenet/pr-faq-validator/internal/parser"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -57,7 +58,8 @@ func NewModel(sections parser.SpecSections) Model {
 
 // Init initializes the TUI model
 func (m Model) Init() tea.Cmd {
-	return nil
+	// Return a command to start AI analysis
+	return StartAIAnalysis(m.sections)
 }
 
 // Update handles TUI events and state changes
@@ -112,8 +114,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if msg.Section == "FAQs" {
 			m.faqFeedback = msg.Feedback
 		}
+		
+		// Set completion status  
 		m.loading = false
-		m.status = "Analysis complete"
+		if strings.Contains(msg.Feedback, "AI analysis unavailable") {
+			m.status = "AI analysis failed - see AI Feedback tab for details"
+		} else {
+			m.status = "AI analysis complete"
+		}
 		return m, nil
 		
 	case SetStatusMsg:
@@ -126,6 +134,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Analyzing with AI..."
 		}
 		return m, nil
+		
+	case AIAnalysisMsg:
+		m.loading = true
+		m.status = fmt.Sprintf("Analyzing %s with AI...", msg.Section)
+		return m, AnalyzeSection(msg.Section, msg.Content)
 	}
 	
 	return m, nil
@@ -310,5 +323,48 @@ func SetStatus(status string) tea.Cmd {
 func SetLoading(loading bool) tea.Cmd {
 	return func() tea.Msg {
 		return SetLoadingMsg(loading)
+	}
+}
+
+// AIAnalysisMsg represents the start of AI analysis
+type AIAnalysisMsg struct {
+	Section string
+	Content string
+}
+
+// StartAIAnalysis creates a command to start AI analysis
+func StartAIAnalysis(sections parser.SpecSections) tea.Cmd {
+	return tea.Batch(
+		// Start PR analysis if available
+		func() tea.Msg {
+			if sections.PressRelease != "" {
+				return AIAnalysisMsg{Section: "Press Release", Content: sections.PressRelease}
+			}
+			return nil
+		},
+		// Start FAQ analysis if available  
+		func() tea.Msg {
+			if sections.FAQs != "" {
+				return AIAnalysisMsg{Section: "FAQs", Content: sections.FAQs}
+			}
+			return nil
+		},
+	)
+}
+
+// AnalyzeSection creates a command to analyze a specific section
+func AnalyzeSection(section, content string) tea.Cmd {
+	return func() tea.Msg {
+		feedback, err := llm.AnalyzeSection(section, content)
+		if err != nil {
+			return SetFeedbackMsg{
+				Section:  section, 
+				Feedback: fmt.Sprintf("AI analysis unavailable: %v\n\nTo enable AI feedback:\n1. Set your OpenAI API key: export OPENAI_API_KEY=your_key_here\n2. Restart the application\n\nNote: The deterministic scoring above provides comprehensive quality analysis without requiring an API key.", err),
+			}
+		}
+		return SetFeedbackMsg{
+			Section:  section,
+			Feedback: feedback.Comments,
+		}
 	}
 }

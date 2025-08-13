@@ -58,36 +58,6 @@ func runInteractiveTUI(sections parser.SpecSections) {
 	// Create Bubble Tea program
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	
-	// Start async AI analysis in background
-	go func() {
-		if sections.PressRelease != "" {
-			p.Send(ui.SetLoading(true))
-			p.Send(ui.SetStatus("Analyzing Press Release with AI..."))
-			
-			feedback, err := llm.AnalyzeSection("Press Release", sections.PressRelease)
-			if err != nil {
-				p.Send(ui.SetStatus(fmt.Sprintf("AI analysis failed: %v", err)))
-				p.Send(ui.SetLoading(false))
-			} else {
-				p.Send(ui.SetFeedback("Press Release", feedback.Comments))
-			}
-		}
-		
-		if sections.FAQs != "" {
-			p.Send(ui.SetStatus("Analyzing FAQs with AI..."))
-			
-			feedback, err := llm.AnalyzeSection("FAQs", sections.FAQs)
-			if err != nil {
-				p.Send(ui.SetStatus(fmt.Sprintf("FAQ analysis failed: %v", err)))
-			} else {
-				p.Send(ui.SetFeedback("FAQs", feedback.Comments))
-			}
-		}
-		
-		p.Send(ui.SetLoading(false))
-		p.Send(ui.SetStatus("Analysis complete - Press ? for help"))
-	}()
-	
 	// Run the TUI
 	if _, err := p.Run(); err != nil {
 		log.Fatalf("Error running TUI: %v", err)
